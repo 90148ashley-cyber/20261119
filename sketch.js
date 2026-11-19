@@ -1,3 +1,5 @@
+let bgSprite; // 儲存背景圖片
+let bgScrollX = 0; // 儲存目前背景水平捲動偏移量（0 代表中心對齊）
 let characterSprite; // 儲存角色一的精靈圖
 let walkSprite; // 儲存角色一的走路精靈圖
 let magicSprite; // 儲存角色一的施法精靈圖
@@ -24,7 +26,9 @@ const effectFrameWidth = 740 / effectFrameCount; // 計算魔法特效每格的�
 const effectFrameHeight = 19; // 設定魔法特效每格的高度
 const framesPerStep = 8; // 設定動畫每隔幾個畫面更新一格
 
-function preload() { // 在畫布建立前載入角色圖片
+function preload() { // 在畫布建立前載入背景與角色圖片
+  // 注意：瀏覽器端 p5.js 需使用相對於專案根目錄的路徑（例如 1/BG/城市.png）
+  bgSprite = loadImage("1/BG/城市.png"); // 載入 1/BG 資料夾內的背景圖片（若檔名不同請修改）
   characterSprite = loadImage("1/stop/stop.png"); // 載入角色一的十格精靈圖
   walkSprite = loadImage("1/walk/walk.png"); // 載入角色一的九格走路精靈圖
   magicSprite = loadImage("1/magic/magic.png"); // 載入角色一的四格施法精靈圖
@@ -33,26 +37,54 @@ function preload() { // 在畫布建立前載入角色圖片
 
 function setup() { // 初始化畫布與繪圖模式
   createCanvas(windowWidth, windowHeight); // 建立符合視窗尺寸的畫布
-  imageMode(CENTER); // 讓角色座標代表影格的中心點
+  imageMode(CENTER); // 讓圖片座標代表影格的中心點
   characterX = (width * 2) / 3; // 將角色初始位置設在畫布寬度的三分之二處
   frameRate(60); // 將動畫更新速率設定為每秒六十格
 } // 結束初始化函式
 
 function draw() { // 每個畫面更新一次背景與角色
-  background("#87CEEB"); // 使用天空藍清除畫布
+  background("#87CEEB"); // 使用天空藍作為底色
+
   const movingRight = keyIsDown(RIGHT_ARROW); // 檢查右方向鍵目前是否按住
   const movingLeft = keyIsDown(LEFT_ARROW); // 檢查左方向鍵目前是否按住
   isWalking = movingRight || movingLeft; // 沒有按住左右鍵時切回站立動畫
   const movementStep = constrain(width * 0.004, 2, 8); // 依畫布寬度計算適合不同裝置的移動速度
+
+  // 計算單張背景等比填滿畫布高度後的寬度與高度
+  const bgScale = height / bgSprite.height; // 依畫布高度計算背景縮放倍率
+  const singleBgWidth = bgSprite.width * bgScale; // 單張背景顯示寬度
+  const singleBgHeight = height; // 背景顯示高度等於畫布高度
+
+  // 計算三張串接背景可捲動的左右邊界
+  const minScrollX = singleBgWidth; // 最左邊界（背景往右捲到底）
+  const maxScrollX = -singleBgWidth; // 最右邊界（背景往左捲到底）
+  bgScrollX = constrain(bgScrollX, maxScrollX, minScrollX); // 確保捲動量不超出左右邊界
+
   if (movingRight) { // 按住右方向鍵時執行右行控制
     isWalking = true; // 切換至走路動畫
     facingDirection = 1; // 設定角色朝向右方
-    characterX += movementStep; // 讓角色向右移動
+    if (bgScrollX > maxScrollX) { // 尚未抵達背景最右邊時，背景往左捲動
+      bgScrollX = max(maxScrollX, bgScrollX - movementStep); // 背景往左移動
+    } else { // 已抵達背景最右邊，背景暫停捲動，角色改為往右移動
+      characterX += movementStep; // 角色往右移動
+    }
   } else if (movingLeft) { // 按住左方向鍵且未按右鍵時執行左行控制
     isWalking = true; // 切換至走路動畫
     facingDirection = -1; // 設定角色朝向左方
-    characterX -= movementStep; // 讓角色向左移動
+    if (bgScrollX < minScrollX) { // 尚未抵達背景最左邊時，背景往右捲動
+      bgScrollX = min(minScrollX, bgScrollX + movementStep); // 背景往右移動
+    } else { // 已抵達背景最左邊，背景暫停捲動，角色改為往左移動
+      characterX -= movementStep; // 角色往左移動
+    }
   } // 結束方向鍵移動判斷
+
+  // 繪製左右各複製一張、共三張串接的背景圖片
+  const centerBgX = width / 2 + bgScrollX; // 中間那張背景的中心 X 座標
+  const leftBgX = centerBgX - singleBgWidth; // 左側複製背景的中心 X 座標
+  const rightBgX = centerBgX + singleBgWidth; // 右側複製背景的中心 X 座標
+  image(bgSprite, leftBgX, height / 2, singleBgWidth, singleBgHeight); // 繪製左側背景
+  image(bgSprite, centerBgX, height / 2, singleBgWidth, singleBgHeight); // 繪製中間背景
+  image(bgSprite, rightBgX, height / 2, singleBgWidth, singleBgHeight); // 繪製右側背景
 
   const activeSprite = isCasting ? magicSprite : isWalking ? walkSprite : characterSprite; // 根據角色狀態選擇施法、走路或站立精靈圖
   const activeFrameCount = isCasting ? magicFrameCount : isWalking ? walkFrameCount : frameCountInSprite; // 取得目前精靈圖的影格總數
@@ -72,8 +104,9 @@ function draw() { // 每個畫面更新一次背景與角色
   characterX = constrain(characterX, activeWidth / 2, width - activeWidth / 2); // 限制角色中心避免超出畫布左右邊界
   if (isCasting && frameCount - magicStartFrame >= magicFrameCount * framesPerStep) { // 檢查施法動畫是否已完整播放一次
     isCasting = false; // 結束施法動畫並恢復一般角色動作
+    const spawnScreenX = characterX + magicDirection * activeWidth / 2; // 施法特效初始螢幕 X 座標
     activeEffects.push({
-      x: characterX + magicDirection * activeWidth / 2,
+      worldX: spawnScreenX - bgScrollX, // 轉換為世界座標，避免背景捲動時特效跟著偏移
       y: height - characterHeight * 0.58,
       direction: magicDirection
     }); // 在角色前方建立朝施法方向飛行的特效
@@ -96,14 +129,15 @@ function draw() { // 每個畫面更新一次背景與角色
   const effectSpeed = max(6, width * 0.008); // 依畫布寬度計算特效飛行速度
   for (let effectIndex = activeEffects.length - 1; effectIndex >= 0; effectIndex--) { // 由後往前更新所有飛行中的特效
     const effect = activeEffects[effectIndex]; // 取得目前更新的特效資料
-    effect.x += effect.direction * effectSpeed; // 依特效方向更新水平位置
-    if (effect.x > width || effect.x < 0) { // 判斷特效是否已抵達畫布左右邊緣
+    effect.worldX += effect.direction * effectSpeed; // 依特效方向更新世界水平位置
+    const screenX = effect.worldX + bgScrollX; // 換算成目前畫面上的 X 座標
+    if (screenX > width || screenX < 0) { // 判斷特效是否已抵達畫布左右邊緣
       activeEffects.splice(effectIndex, 1); // 移除已飛出畫布的特效
       continue; // 略過已移除特效的繪製
     } // 結束特效邊界判斷
     const effectFrameIndex = floor(frameCount / framesPerStep) % effectFrameCount; // 計算特效目前播放的影格
     push(); // 暫存目前的繪圖座標轉換狀態
-    translate(effect.x, effect.y); // 將繪圖原點移至特效中心
+    translate(screenX, effect.y); // 將繪圖原點移至特效目前畫面中心
     scale(effect.direction, 1); // 依飛行方向翻轉特效影格
     image(magicEffectSprite, 0, 0, effectWidth, effectHeight, effectFrameIndex * effectFrameWidth, 0, effectFrameWidth, effectFrameHeight); // 裁切並繪製目前特效影格
     pop(); // 還原繪圖座標轉換狀態
